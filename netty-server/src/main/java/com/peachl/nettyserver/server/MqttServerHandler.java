@@ -1,10 +1,6 @@
 package com.peachl.nettyserver.server;
 
-import cn.hutool.Hutool;
-import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.RandomUtil;
-import cn.hutool.core.util.ReferenceUtil;
-import cn.hutool.core.util.StrUtil;
 import com.peachl.nettyserver.entity.MqttClient;
 import com.peachl.nettyserver.entity.MqttCtx;
 import com.peachl.nettyserver.utils.Constants;
@@ -12,21 +8,20 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.mqtt.*;
-import io.netty.util.CharsetUtil;
 import io.netty.util.ReferenceCountUtil;
-import io.netty.util.ReferenceCounted;
-import io.netty.util.internal.StringUtil;
+import io.netty.util.concurrent.GlobalEventExecutor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
-import java.nio.charset.Charset;
-import java.util.*;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import static io.netty.handler.codec.mqtt.MqttConnectReturnCode.*;
+import static io.netty.handler.codec.mqtt.MqttConnectReturnCode.CONNECTION_ACCEPTED;
 
 /**
  * @Author: zjw
@@ -54,12 +49,16 @@ public class MqttServerHandler extends ChannelInboundHandlerAdapter {
 
     public static ConcurrentHashMap<String, MqttCtx> subMap = new ConcurrentHashMap<String, MqttCtx>(131072);
 
+    public static AtomicInteger connNum = new AtomicInteger(0);
+
+    private static ChannelGroup channelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
+
     /**
      * 新设备连接初始化方法
      * @param channelHandlerContext
      */
     public void channelActive(ChannelHandlerContext channelHandlerContext) {
-        log.info("新设备连接，当前时间{}", DateUtil.now());
+        //log.info("新设备连接，当前时间{}", DateUtil.now());
     }
 
     /**
@@ -70,73 +69,74 @@ public class MqttServerHandler extends ChannelInboundHandlerAdapter {
      */
     public void channelRead(ChannelHandlerContext ctx, Object request) throws Exception {
         MqttMessage mqttMsg = (MqttMessage) request;
+        log.info(String.valueOf(connNum));
         if (mqttMsg.decoderResult().isSuccess()) {
             switch (mqttMsg.fixedHeader().messageType()) {
                 case CONNECT:
                     //建立连接
-                    log.info("建立连接");
+                    //log.info("建立连接");
                     doConnect(ctx, request);
                     break;
                 case CONNACK:
                     //确认连接
-                    log.info("确认连接");
+                    //log.info("确认连接");
                     break;
                 case PUBLISH:
                     //新发布消息
-                    log.info("新发布消息");
+                    //log.info("新发布消息");
                     doPublish(ctx, request);
                     break;
                 case PUBACK:
                     //确认新发布消息
-                    log.info("确认新发布消息");
+                    //log.info("确认新发布消息");
                     break;
                 case PUBREC:
                     //QOS2 已记录
-                    log.info("已记录");
+                    //log.info("已记录");
                     break;
                 case PUBREL:
                     //QOS2 已释放
-                    log.info("已释放");
+                    //log.info("已释放");
                     break;
                 case PUBCOMP:
                     //QOS2 已结束
-                    log.info("已结束");
+                    //log.info("已结束");
                     break;
                 case SUBSCRIBE:
                     //订阅
-                    log.info("订阅");
+                    //log.info("订阅");
                     doSubScribe(ctx, request);
                     break;
                 case SUBACK:
                     //确认订阅
-                    log.info("确认订阅");
+                    //log.info("确认订阅");
                     break;
                 case UNSUBSCRIBE:
                     //终止订阅
-                    log.info("终止订阅");
+                    //log.info("终止订阅");
                     doUnSubScribe(ctx, request);
                     break;
                 case UNSUBACK:
                     //确认终止订阅消息
-                    log.info("确认终止订阅消息");
+                    //log.info("确认终止订阅消息");
                     break;
                 case PINGREQ:
                     //心跳消息
-                    log.info("心跳消息");
+                    //log.info("心跳消息");
                     doPingReq(ctx, request);
                     break;
                 case PINGRESP:
                     //心跳确认
-                    log.info("心跳确认");
+                    //log.info("心跳确认");
                     break;
                 case DISCONNECT:
                     //停止连接
-                    log.info("停止连接");
+                    //log.info("停止连接");
                     doDisConnect(ctx, request);
                     break;
                 case AUTH:
                     //增强认证
-                    log.info("增强认证");
+                    //log.info("增强认证");
                     break;
                 default:
                     break;
@@ -171,14 +171,16 @@ public class MqttServerHandler extends ChannelInboundHandlerAdapter {
         MqttPublishVariableHeader variableHeader = new MqttPublishVariableHeader(topicName, messageId);
         ByteBuf payload = Unpooled.wrappedBuffer(willMsg);
         MqttPublishMessage msg = new MqttPublishMessage(mqttFixedHeader, variableHeader, payload);
+
         //遍历订阅主题的缓存列表，将消息发送至所有的订阅列表
         subMap.forEach((k, v) -> {
             if(topicName.equals(v.getWillTopic())) {
                 msg.retain();
                 v.getCtx().writeAndFlush(msg);
-                log.info("发送正常{}", v.getCtx());
+                //log.info("发送正常{}", v.getCtx());
             }
         });
+
         ReferenceCountUtil.release(msg);
     }
 
@@ -221,6 +223,7 @@ public class MqttServerHandler extends ChannelInboundHandlerAdapter {
      */
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
         Channel channel = ctx.channel();
+        connNum.getAndDecrement();
         //网络异常发送遗嘱
         if(cause instanceof IOException) {
             String channelId = String.valueOf(ctx.pipeline().channel().id());
@@ -251,14 +254,14 @@ public class MqttServerHandler extends ChannelInboundHandlerAdapter {
      * @param request
      */
     private void doSubScribe(ChannelHandlerContext ctx, Object request) {
-        log.info("开始订阅");
+        //log.info("开始订阅");
         MqttSubscribeMessage message = (MqttSubscribeMessage) request;
         int messageId = message.variableHeader().messageId();
         if(-1 == messageId) {
             messageId = 1;
         }
 
-        log.info("订阅服务编号为{}", ctx.pipeline().channel().id());
+        //log.info("订阅服务编号为{}", ctx.pipeline().channel().id());
 
         //获取所有的订阅主题列表
         Set<String> topics = message.payload().topicSubscriptions().stream()
@@ -301,7 +304,7 @@ public class MqttServerHandler extends ChannelInboundHandlerAdapter {
         MqttPublishMessage message = (MqttPublishMessage)request;
         ByteBuf payload = message.payload();
         String result = new String(ByteBufUtil.getBytes(payload));
-        log.info("终端上报信息为{}", result);
+        //log.info("终端上报信息为{}", result);
 
         int packetId = message.variableHeader().packetId();
 
@@ -319,18 +322,21 @@ public class MqttServerHandler extends ChannelInboundHandlerAdapter {
      * @param request
      */
     public void doConnect(ChannelHandlerContext ctx, Object request) {
+
+        connNum.getAndIncrement();
+
         MqttConnectMessage message = (MqttConnectMessage)request;
 
         //建立连接对象并存入缓存
         MqttClient mqttClient = new MqttClient();
         mqttClient.setClientId(message.payload().clientIdentifier());
-        mqttClient.setClientName(message.payload().userName());
-        mqttClient.setClientPwd(new String(message.payload().passwordInBytes(), CharsetUtil.UTF_8));
-        mqttClient.setWillTopic(message.payload().willTopic());
-        mqttClient.setWillMsg(message.payload().willMessageInBytes());
+//        mqttClient.setClientName(message.payload().userName());
+//        mqttClient.setClientPwd(new String(message.payload().passwordInBytes(), CharsetUtil.UTF_8));
+//        mqttClient.setWillTopic(message.payload().willTopic());
+//        mqttClient.setWillMsg(message.payload().willMessageInBytes());
         clientMap.put(String.valueOf(ctx.pipeline().channel().id()), mqttClient);
 
-        log.info("新设备连接设备编号为：{}",ctx.pipeline().channel().id());
+        //log.info("新设备连接设备编号为：{}",ctx.pipeline().channel().id());
 
         MqttConnAckVariableHeader variableheader = new MqttConnAckVariableHeader(CONNECTION_ACCEPTED, false);
 
@@ -339,6 +345,7 @@ public class MqttServerHandler extends ChannelInboundHandlerAdapter {
             case CONNECTION_ACCEPTED:
                 MqttConnAckMessage connAckMessage = new MqttConnAckMessage(Constants.CONNACK_HEADER, variableheader);
                 ctx.writeAndFlush(connAckMessage);
+//                channelGroup.add(ctx.channel());
                 return;
             case CONNECTION_REFUSED_BAD_USER_NAME_OR_PASSWORD:
                 errorMsg = "用户名密码错误";

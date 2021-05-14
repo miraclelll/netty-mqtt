@@ -2,6 +2,7 @@ package com.peachl.nettyserver.server;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
 import io.netty.handler.codec.mqtt.MqttDecoder;
 import io.netty.handler.codec.mqtt.MqttEncoder;
@@ -31,10 +32,11 @@ public class MqttServerInitializer extends ChannelInitializer {
     @Override
     protected void initChannel(Channel channel) throws Exception {
         ChannelPipeline pipeline = channel.pipeline();
-        pipeline.addLast(new LoggingHandler(LogLevel.INFO));
+//        pipeline.addLast(new LoggingHandler(LogLevel.INFO));
+        pipeline.addLast();
         pipeline.addLast(MqttEncoder.INSTANCE);
         pipeline.addLast(new MqttDecoder(81920));
-        pipeline.addLast("timeout", new IdleStateHandler(30, 0, 20, TimeUnit.SECONDS));
+//        pipeline.addLast("timeout", new IdleStateHandler(30, 0, 20, TimeUnit.SECONDS));
         pipeline.addLast(HANDLER);
         if(null != sslctx) {
             pipeline.addLast(sslctx.newHandler(channel.alloc()));

@@ -48,6 +48,7 @@ public class MqttServer {
         try {
             ServerBootstrap serverBootstrap = bootstrap.group(boosGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
+                    .option(ChannelOption.SO_RCVBUF, 1024*1024*1024)
                     .childHandler(new MqttServerInitializer(sslctx));
 
             ChannelFuture future = serverBootstrap.bind(port).sync();
@@ -55,7 +56,7 @@ public class MqttServer {
         } catch (InterruptedException e) {
             log.info("程序中断");
         } finally {
-            log.info("释放资源");
+            log.info("释放资源，连接线程数为{}", MqttServerHandler.connNum);
             if(null != boosGroup) {
                 boosGroup.shutdownGracefully();
             }
